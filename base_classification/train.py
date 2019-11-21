@@ -8,9 +8,9 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 import torch
 
-from aptos_dataset import aptos_dataset
+from aptos_dataset import aptos_dataset, dataloaders
 from preprocessing import preprocessing
-from model import classifier
+# from model import classifier
 
 import time
 import copy
@@ -19,21 +19,22 @@ data_dir = '/media/sangwook/MGTEC/blindness_detection_data/2019/train_images/'
 label_file = '/media/sangwook/MGTEC/blindness_detection_data/2019/train_2019.csv'
 
 dataset = aptos_dataset(d_path=data_dir, label_file=label_file)
-dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+# dataloader = DataLoader(dataset, batch_size=8, shuffle=True)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-loss_function = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0, amsgrad=False)
-exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
-
 num_classes = 5
+num_epochs = 2
 
 model = models.resnet18(pretrained=True)
 model.fc = nn.Linear(in_features=51200, out_features=num_classes, bias=False)
 model.to(device)
 
-num_epochs = 1
+optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0, amsgrad=False)
+exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+criterion = nn.CrossEntropyLoss()
+
+# dataloaders
+dataloaders, dataset_sizes = dataloaders(dataset, validation_split = 0.2, shuffle_dataset = True, random_seed = 102, batch_size = 8)
 
 def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
     since = time.time()
@@ -57,9 +58,9 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
             running_corrects = 0
 
             # 데이터를 반복
-            for inputs, labels in dataloaders[phase]:
-                inputs = inputs.to(device)
-                labels = labels.to(device)
+            for i, batch in enumerate(dataloaders[phase]):
+                inputs = batch['image'].to(device).float()
+                labels = batch['label'].to(device)
 
                 # 매개변수 경사도를 0으로 설정
                 optimizer.zero_grad()
@@ -102,28 +103,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
     model.load_state_dict(best_model_wts)
     return model
 
-for epoch in range(num_epochs):
+model_best = train_model(model, criterion, optimizer, exp_lr_scheduler,
+                       num_epochs=num_epochs)
 
-    print('Epoch {}/{}'.format(epoch, num_epochs - 1))
-    print('-' * 10)
-
-    exp_lr_scheduler.step()
-
-    for i_batch, sample_batch in enumerate(dataloader):
-
-        X_ = sample_batch['image'].to(device).float()
-        y_true = sample_batch['label'].to(device)
-
-        # TODO: import Classifier
-
-        y_output = model(X_)
-        _, preds = torch.max(y_output, 1)
-        optimizer.zero_grad()
-
-        loss_ = loss_function(y_output, y_true)
-        loss_.backward()
-        optimizer.step()
-
-        print(loss_)
-        
-        print()
+torch.save(model_best.state_dict(), './checkpoint/base_classifier_model.pth')
