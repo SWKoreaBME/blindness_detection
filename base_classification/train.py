@@ -23,7 +23,7 @@ dataset = aptos_dataset(d_path=data_dir, label_file=label_file)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 num_classes = 5
-num_epochs = 2
+num_epochs = 30
 
 model = models.resnet18(pretrained=True)
 model.fc = nn.Linear(in_features=51200, out_features=num_classes, bias=False)
