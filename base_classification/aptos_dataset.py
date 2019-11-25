@@ -56,7 +56,7 @@ class aptos_dataset(object):
 
     #TODO : Images with half sizes should be labeled individually
 
-    def resize(self, image, target_shape=(299, 299)):
+    def resize(self, image, target_shape=(256, 256)):
         # 299 is fixed size of inception v3 network
         resized_image = cv2.resize(image, target_shape, interpolation = cv2.INTER_CUBIC)
         return resized_image
