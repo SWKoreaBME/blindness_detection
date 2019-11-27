@@ -4,13 +4,10 @@ import torch
 import pandas as pd
 import numpy as np
 
-import imgaug as ia
-import imgaug.augmenters as iaa
-
 from preprocessing import preprocessing
 from torch.utils.data import SubsetRandomSampler
 
-class aug_dataset(object):
+class aptos_dataset(object):
     """
         input : data folder path
 
@@ -21,34 +18,81 @@ class aug_dataset(object):
 
     """
 
-    def __init__(self, d_path = './', label_file = './', preprocess = True, da = True, da_method = None):
-        super(aug_dataset, self).__init__()
+    def __init__(self, d_path = './', da_root_path = './', label_file = './', preprocess = True, da_method = None, da = True):
+
+        super(aptos_dataset, self).__init__()
 
         self.data_path = d_path
+
         self.image_list = os.listdir(d_path)
+        self.da = da
+        self.da_root_path = da_root_path
+
         self.train_csv = pd.read_csv(label_file)
         self.preprocess = preprocess
-        self.da = da
         self.da_method = da_method
 
-    # def __len__(self):
-    #     return len(self.image_list)
+        if da:
+            self.da_image_list, self.da_label_list = self.make_da_image_list()
+            
+    def __len__(self):
+        if not self.da:
+            return len(self.image_list)
+        else:
+            return len(self.da_image_list)
+
+    def make_da_image_list(self):
+
+        labels = os.listdir(self.da_root_path)
+        da_image_list = []
+        da_label_list = []
+
+        original_image_list = []
+        original_label_list = []
+
+        for label in labels:
+
+            label_list = [os.path.join(self.da_root_path, label, a) for a in os.listdir(os.path.join(self.da_root_path, label))]
+            
+            da_image_list.extend(label_list)
+            da_label_list.extend([int(label)] * len(label_list))
+
+        for image_name in self.image_list:
+
+            label = self.read_label(image_name.rstrip('.png'))
+            original_label_list.append(label)
+            original_image_list.append(os.path.join(self.data_path, image_name))
+
+        da_image_list.extend(original_image_list)
+        da_label_list.extend(original_label_list)
+
+        print("Integrated image list size : ",len(da_label_list))
+
+        return da_image_list, da_label_list
 
     def __getitem__(self, index):
+        
+        if not self.da:
+            # read image
+            image_name = self.image_list[index]
+            img_id = image_name.rstrip('.png')
 
-        # read image
-        image_name = self.image_list[index]
-        img_id = image_name.rstrip('.png')
+            image = self.read_image(os.path.join(self.data_path, image_name))
 
-        image = self.read_image(os.path.join(self.data_path, image_name))
+            # get labels
+            label = self.read_label(img_id)
+
+        else:
+            image_name = self.da_image_list[index]
+            image = self.read_image(image_name)
+            label = self.da_label_list[index]
+
         if self.preprocess:
             image = preprocessing(image)
-        # image = self.resize(image)
-        # if len(image.shape) != 3:
-        #     image = self.expand_channel(image)
-
-        # get labels
-        label = self.read_label(img_id)
+        else:
+            image = self.resize(image)
+            if len(image.shape) != 3:
+                image = self.expand_channel(image)
 
         # To Tensor
         image = self.ToTensor(image)
@@ -57,16 +101,9 @@ class aug_dataset(object):
 
         return sample
 
-    def image_augmentation(self)
-        return 
-
-    def get_image_by_label(self, label=0, ratio=1.0):
-
-        return augmented_images
-
     #TODO : Images with half sizes should be labeled individually
 
-    def resize(self, image, target_shape=(299, 299)):
+    def resize(self, image, target_shape=(256, 256)):
         # 299 is fixed size of inception v3 network
         resized_image = cv2.resize(image, target_shape, interpolation = cv2.INTER_CUBIC)
         return resized_image
@@ -90,6 +127,19 @@ class aug_dataset(object):
         return torch.from_numpy(image)
 
     # TODO : split data into train, validation set
+
+    def split_train_val():
+
+        # Creating data indices for training and validation splits:
+        dataset_size = len(dataset)
+        indices = list(range(dataset_size))
+        split = int(np.floor(validation_split * dataset_size))
+        if shuffle_dataset :
+            np.random.seed(random_seed)
+            np.random.shuffle(indices)
+        train_indices, val_indices = indices[split:], indices[:split]
+
+        return train_sampler, valid_sampler
 
 def dataloaders(dataset, validation_split = 0.2, shuffle_dataset = True, random_seed = 102, batch_size = 4):
 
@@ -115,46 +165,3 @@ def dataloaders(dataset, validation_split = 0.2, shuffle_dataset = True, random_
     dataset_sizes = dict(train = len(train_sampler), val = len(valid_sampler))
 
     return dataloaders, dataset_sizes
-
-
-
-ia.seed(1)
-
-# Example batch of images.
-# The array has shape (32, 64, 64, 3) and dtype uint8.
-images = np.array(
-    [ia.quokka(size=(64, 64)) for _ in range(32)],
-    dtype=np.uint8
-)
-
-seq = iaa.Sequential([
-    iaa.Fliplr(0.5), # horizontal flips
-    iaa.Crop(percent=(0, 0.1)), # random crops
-    # Small gaussian blur with random sigma between 0 and 0.5.
-    # But we only blur about 50% of all images.
-    iaa.Sometimes(0.5,
-        iaa.GaussianBlur(sigma=(0, 0.5))
-    ),
-    # Strengthen or weaken the contrast in each image.
-    iaa.ContrastNormalization((0.75, 1.5)),
-    # Add gaussian noise.
-    # For 50% of all images, we sample the noise once per pixel.
-    # For the other 50% of all images, we sample the noise per pixel AND
-    # channel. This can change the color (not only brightness) of the
-    # pixels.
-    iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05*255), per_channel=0.5),
-    # Make some images brighter and some darker.
-    # In 20% of all cases, we sample the multiplier once per channel,
-    # which can end up changing the color of the images.
-    iaa.Multiply((0.8, 1.2), per_channel=0.2),
-    # Apply affine transformations to each image.
-    # Scale/zoom them, translate/move them, rotate them and shear them.
-    iaa.Affine(
-        scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
-        translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
-        rotate=(-25, 25),
-        shear=(-8, 8)
-    )
-], random_order=True) # apply augmenters in random order
-
-images_aug = seq(images=images)

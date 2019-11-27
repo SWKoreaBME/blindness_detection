@@ -18,34 +18,79 @@ class aptos_dataset(object):
 
     """
 
-    def __init__(self, d_path = './', label_file = './', preprocess = True, da = True, da_method = None):
+    def __init__(self, d_path = './', da_root_path = './', label_file = './', preprocess = True, da_method = None, da = True):
+
         super(aptos_dataset, self).__init__()
 
         self.data_path = d_path
+
         self.image_list = os.listdir(d_path)
+        self.da = da
+        if da:
+            self.da_image_list, self.da_label_list = self.make_da_image_list()
+
+        self.da_root_path = da_root_path
+
         self.train_csv = pd.read_csv(label_file)
         self.preprocess = preprocess
-        self.da = da
         self.da_method = da_method
 
     def __len__(self):
-        return len(self.image_list)
+        if not self.da:
+            return len(self.image_list)
+        else:
+            return len(self.da_image_list)
+
+    def make_da_image_list(self):
+
+        labels = os.listdir(self.da_root_path)
+        da_image_list = []
+        da_label_list = []
+
+        original_image_list = []
+        original_label_list = []
+
+        for label in labels:
+
+            label_list = [os.path.join(self.da_root_path, label, a) for a in os.listdir(os.path.join(self.da_root_path, label))]
+            
+            da_image_list.extend(label_list)
+            da_label_list.extend([int(label)] * len(label_list))
+
+        for image_name in self.image_list:
+
+            label = self.read_label(image_name.rstrip('.png'))
+            original_label_list.append(label)
+            original_image_list.append(os.path.join(self.data_path, image_name))
+
+        da_image_list.extend(original_image_list)
+        da_label_list.extend(original_label_list)
+
+        return da_image_list, da_label_list
 
     def __getitem__(self, index):
+        
+        if not self.da:
+            # read image
+            image_name = self.image_list[index]
+            img_id = image_name.rstrip('.png')
 
-        # read image
-        image_name = self.image_list[index]
-        img_id = image_name.rstrip('.png')
+            image = self.read_image(os.path.join(self.data_path, image_name))
 
-        image = self.read_image(os.path.join(self.data_path, image_name))
+            # get labels
+            label = self.read_label(img_id)
+
+        else:
+            image_name = self.da_image_list[index]
+            image = self.read_image(image_name)
+            label = self.da_label_list[index]
+
         if self.preprocess:
             image = preprocessing(image)
-        # image = self.resize(image)
-        # if len(image.shape) != 3:
-        #     image = self.expand_channel(image)
-
-        # get labels
-        label = self.read_label(img_id)
+        else:
+            image = self.resize(image)
+            if len(image.shape) != 3:
+                image = self.expand_channel(image)
 
         # To Tensor
         image = self.ToTensor(image)
@@ -56,7 +101,7 @@ class aptos_dataset(object):
 
     #TODO : Images with half sizes should be labeled individually
 
-    def resize(self, image, target_shape=(299, 299)):
+    def resize(self, image, target_shape=(256, 256)):
         # 299 is fixed size of inception v3 network
         resized_image = cv2.resize(image, target_shape, interpolation = cv2.INTER_CUBIC)
         return resized_image

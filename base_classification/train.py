@@ -18,12 +18,12 @@ import copy
 data_dir = '/media/sangwook/MGTEC/blindness_detection_data/2019/train_images/'
 label_file = '/media/sangwook/MGTEC/blindness_detection_data/2019/train_2019.csv'
 
-dataset = aptos_dataset(d_path=data_dir, label_file=label_file)
+dataset = aptos_dataset(d_path=data_dir, da_root_path = './', label_file=label_file, da=False)
 # dataloader = DataLoader(dataset, batch_size=8, shuffle=True)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 num_classes = 5
-num_epochs = 30
+num_epochs = 100
 
 model = models.resnet18(pretrained=True)
 model.fc = nn.Linear(in_features=51200, out_features=num_classes, bias=False)
